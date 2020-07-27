@@ -1,0 +1,64 @@
+--
+resource_types:
+  - name: slack-notification
+    type: docker-image
+    source:
+      repository: cfcommunity/slack-notification-resource
+      tag: latest
+
+resources:
+  - name: sbux_azure_functions
+    type: git
+    source:
+      uri: https://github.com/EMC-Underground/sbux_azure_functions.git
+      branch: master
+
+  - name: slack-alert
+    type: slack-notification
+    source:
+      url: ((slack_webhook_url))
+
+  - name: every-((scheduled_minutes))
+    type: time
+    source:
+      location: America/Los_Angeles
+      interval: ((scheduled_minutes))m
+
+jobs:
+- name: job_deploy_customer-a_script
+  public: true
+  plan:
+  - get: sbux_azure_functions
+    trigger: true
+  - get: every-((scheduled_minutes))
+    trigger: true
+  - task: run-script
+    params:
+      SLACK_URL: ((slack_url))
+    config:
+      platform: linux
+      image_resource:
+        type: docker-image
+        source:
+          repository: bsoper/powercli-base
+          tag: latest
+      inputs:
+        - name: sbux_azure_functions
+      run:
+        path: bash
+        args:
+        - -c
+        - |
+          az login --u ((az_username)) -p ((az_password))
+          func azure functionapp publish sbux-example
+          done
+
+      outputs:
+        - name: report
+    on_success:
+      put: slack-alert
+      params:
+        text_file: report/test.csv
+        username: jeeves@awesome.com
+        icon_emoji: ghost
+
